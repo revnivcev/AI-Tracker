@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: ai-tracker-app
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://tracker_user:tracker_password@postgres:5432/tracker_db
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - YANDEX_TRACKER_TOKEN=${YANDEX_TRACKER_TOKEN}
+      - YANDEX_ORG_ID=${YANDEX_ORG_ID}
+      - YANDEX_CLOUD_ORG_ID=${YANDEX_CLOUD_ORG_ID}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=hf.co/Vikhrmodels/Vikhr-Gemma-2B-instruct-GGUF:Q3_K_L
+      - GIGACHAT_API_KEY=${GIGACHAT_API_KEY}
+      - GIGACHAT_AUTH_URL=${GIGACHAT_AUTH_URL}
+      - WHISPER_BASE_URL=http://whisper:9000
+    depends_on:
+      - postgres
+      - ollama
+      - whisper
+    volumes:
+      - ./logs:/app/logs
+
+  postgres:
+    image: postgres:15
+    container_name: ai-tracker-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=tracker_db
+      - POSTGRES_USER=tracker_user
+      - POSTGRES_PASSWORD=tracker_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai-tracker-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: ai-tracker-whisper
+    restart: unless-stopped
+    environment:
+      - ASR_MODEL=base
+      - ASR_MODEL_DIR=/models
+      - ASR_DEVICE=cpu
+      - ASR_COMPUTE_TYPE=float32
+    ports:
+      - "9000:9000"
+    volumes:
+      - whisper_data:/models
+
+volumes:
+  postgres_data:
+  ollama_data:
+  whisper_data: 
