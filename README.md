@@ -1,4 +1,4 @@
-# 🤖 AI-Tracker - Умный Telegram бот для Yandex Tracker
+# 🤖 AI-Tracker - AI-Агент для Yandex Tracker
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
@@ -20,6 +20,7 @@
 - **Естественный язык** - команды на русском языке
 - **Автоматический парсинг** - извлечение параметров задачи из текста
 - **Рефакторинг описаний** - улучшение текста задач ИИ
+- **Поддержка GigaChat API** – для работы со сложными проектами
 
 ### 🎤 Alpha-функции (экспериментальные)
 - **Голосовые сообщения** - распознавание речи через Whisper
@@ -285,6 +286,8 @@ MIT License - см. файл [LICENSE](LICENSE)
 - [Ollama](https://ollama.ai/) - локальный ИИ
 - [python-telegram-bot](https://python-telegram-bot.org/)
 - [Whisper](https://openai.com/research/whisper) - распознавание речи
+- Yandex Tracker Client
+- Vikhr
 
 ---
 
