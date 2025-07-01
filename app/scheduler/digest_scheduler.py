@@ -9,7 +9,7 @@ from app.services.tracker_service import TrackerService
 from app.services.llm_service import LLMService
 from app.core.digest_service import DigestService
 from app.config import settings
-from app.telegram.bot import TelegramBot
+from app.tg_bot.bot import TelegramBot
 
 logger = logging.getLogger(__name__)
 

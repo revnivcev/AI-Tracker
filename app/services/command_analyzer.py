@@ -283,8 +283,6 @@ class CommandAnalyzer:
             intent_result = await self.llm_service.analyze_task_creation_intent(text, available_queues)
             
             if intent_result.get("wants_to_create_task", False):
-                # Добавляем информацию о рефакторинге
-                text_refactoring = intent_result.get("text_refactoring", {})
                 extracted_data = intent_result.get("extracted_data", {})
                 
                 if intent_result.get("has_sufficient_data", False):
@@ -294,22 +292,13 @@ class CommandAnalyzer:
                         "confidence": intent_result.get("confidence", 0.8),
                         "needs_clarification": False,
                         "feature_status": "beta",
-                        "data": {
-                            **extracted_data,
-                            "refactored_text": text_refactoring.get("improved", text),
-                            "original_text": text_refactoring.get("original", text),
-                            "refactoring_changes": text_refactoring.get("changes", [])
-                        },
+                        "data": extracted_data,
                         "clarification_questions": []
                     }
                 else:
                     # Недостаточно данных - запрашиваем уточнения
                     missing_data = intent_result.get("missing_data", [])
                     clarification_text = "🤖 Beta-функция: Создание задач\n"
-                    
-                    # Показываем улучшенную версию текста, если есть
-                    if text_refactoring.get("improved") and text_refactoring.get("improved") != text:
-                        clarification_text += f"💡 Улучшенная версия: {text_refactoring['improved']}\n\n"
                     
                     if missing_data:
                         clarification_text += f"Недостает: {', '.join(missing_data)}\n"
@@ -320,12 +309,7 @@ class CommandAnalyzer:
                         "confidence": intent_result.get("confidence", 0.7),
                         "needs_clarification": True,
                         "feature_status": "beta",
-                        "data": {
-                            **extracted_data,
-                            "refactored_text": text_refactoring.get("improved", text),
-                            "original_text": text_refactoring.get("original", text),
-                            "refactoring_changes": text_refactoring.get("changes", [])
-                        },
+                        "data": extracted_data,
                         "clarification_questions": [clarification_text]
                     }
             

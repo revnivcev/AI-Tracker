@@ -74,8 +74,8 @@ class LLMService:
         Returns:
             Словарь с данными задачи
         """
-        available_queues = available_queues or []
-        available_priorities = available_priorities or ["Низкий", "Средний", "Высокий"]
+        available_queues = available_queues if available_queues else []
+        available_priorities = available_priorities if available_priorities else ["Низкий", "Средний", "Высокий"]
         try:
             # Загружаем промт для создания задачи
             prompt = self.prompt_loader.load_prompt(
@@ -107,8 +107,8 @@ class LLMService:
         Returns:
             Словарь с результатом анализа
         """
-        available_queues = available_queues or []
-        available_priorities = available_priorities or ["Низкий", "Средний", "Высокий"]
+        available_queues = available_queues if available_queues else []
+        available_priorities = available_priorities if available_priorities else ["Низкий", "Средний", "Высокий"]
         try:
             # Загружаем промт для анализа намерений
             prompt = self.prompt_loader.load_prompt(
@@ -185,6 +185,39 @@ class LLMService:
         except Exception as e:
             logger.error(f"Ошибка при создании резюме изменений: {e}")
             return "Обнаружены изменения в задачах."
+
+    async def analyze_task_creation_intent(self, user_text: str, available_queues: List[str]) -> Dict[str, Any]:
+        """
+        Анализировать намерение создания задачи
+        
+        Args:
+            user_text: Текст пользователя
+            available_queues: Список доступных очередей
+            
+        Returns:
+            Словарь с результатом анализа намерений
+        """
+        available_queues = available_queues if available_queues else []
+        available_priorities = ["Низкий", "Средний", "Высокий", "Критический"]
+        
+        try:
+            # Загружаем промт для анализа намерений
+            prompt = self.prompt_loader.load_prompt(
+                'analyze_intent.md',
+                user_text=user_text,
+                available_queues=available_queues,
+                available_priorities=available_priorities
+            )
+            
+            # Генерируем ответ
+            response = await self.generate(prompt)
+            
+            # Парсим JSON из ответа
+            return self._parse_json_response(response)
+            
+        except Exception as e:
+            logger.error(f"Ошибка при анализе намерений создания задачи: {e}")
+            return self._create_fallback_intent_analysis(user_text, available_queues, available_priorities)
 
     async def analyze_free_conversation(self, user_message: str, available_queues: List[str], available_priorities: List[str], user_context: str = "") -> Dict[str, Any]:
         """
@@ -363,33 +396,28 @@ class LLMService:
             original_status: Исходный статус из Yandex Tracker
             
         Returns:
-            Стандартизированный статус: To Do, In Progress, Blocked, Done
+            Стандартизированный статус: Новые, В работе, На проверке, Завершена, Отменена
         """
         try:
             # Загружаем промт для классификации статусов
             prompt = self.prompt_loader.load_prompt(
                 'status_classification.md',
-                original_status=original_status
+                status=original_status,
+                description=""
             )
             
             # Генерируем классификацию
             response = await self.generate(prompt)
             
-            # Очищаем ответ от лишних символов
-            clean_response = response.strip().lower()
-            
-            # Определяем статус
-            if 'to do' in clean_response or 'todo' in clean_response:
-                return 'To Do'
-            elif 'in progress' in clean_response or 'progress' in clean_response:
-                return 'In Progress'
-            elif 'blocked' in clean_response or 'block' in clean_response:
-                return 'Blocked'
-            elif 'done' in clean_response or 'complete' in clean_response or 'finished' in clean_response:
-                return 'Done'
+            # Парсим JSON ответ
+            result = self._parse_json_response(response)
+            if isinstance(result, dict) and 'normalized_status' in result:
+                return result['normalized_status']
+            elif isinstance(result, str):
+                return result
             else:
-                logger.warning(f"LLM вернул неожиданный статус: '{response}', используем 'To Do'")
-                return 'To Do'
+                logger.warning(f"LLM вернул неожиданный формат: '{response}', используем 'Новые'")
+                return 'Новые'
             
         except Exception as e:
             logger.error(f"Ошибка при классификации статуса '{original_status}': {e}")
@@ -400,11 +428,20 @@ class LLMService:
         """Fallback классификация статуса (старая логика)"""
         status_lower = status.lower()
         
-        if any(word in status_lower for word in ['done', 'готово', 'complete', 'завершено', 'решено', 'resolved', 'closed', 'закрыто', 'выполнено']):
-            return 'Done'
-        elif any(word in status_lower for word in ['progress', 'в работе', 'in progress', 'работа', 'выполняется', 'в процессе']):
-            return 'In Progress'
+        if any(word in status_lower for word in ['done', 'готово', 'complete', 'завершено', 'решено', 'resolved', 'closed', 'закрыто', 'выполнено', 'готов']):
+            return 'Завершена'
+        elif any(word in status_lower for word in ['review', 'тест', 'testing', 'проверка', 'ревью', 'code review']):
+            return 'На проверке'
+        elif any(word in status_lower for word in ['progress', 'в работе', 'in progress', 'работа', 'выполняется', 'в процессе', 'разработка', 'открытая', 'открыта', 'open']):
+            return 'В работе'
         elif any(word in status_lower for word in ['blocked', 'блок', 'block', 'блокировано', 'заблокировано', 'требуется информация', 'information required', 'need info', 'info needed']):
-            return 'Blocked'
+            return 'Отменена'
         else:
-            return 'To Do' 
+            return 'Новые'
+    
+    async def ensure_llm_models(self):
+        """Проверить и при необходимости загрузить все нужные LLM-модели"""
+        for name, provider in self.providers.items():
+            if hasattr(provider, 'ensure_model_available'):
+                await provider.ensure_model_available()
+        return None 

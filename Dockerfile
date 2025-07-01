@@ -17,6 +17,9 @@ COPY .env .
 # Копирование кода приложения
 COPY app/ ./app/
 
+# Копирование entrypoint для Telegram-бота
+COPY telegram_bot.py .
+
 # Создание директории для логов
 RUN mkdir -p logs
 

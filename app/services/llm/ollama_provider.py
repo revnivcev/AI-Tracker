@@ -31,8 +31,10 @@ class OllamaProvider(BaseLLMProvider):
         # Убираем trailing slash
         self.base_url = self.base_url.rstrip('/')
         
-        # Проверяем доступность модели при инициализации
-        self._check_model_availability()
+        try:
+            self._check_model_availability()
+        except ValueError:
+            logger.warning(f"Модель {self.model} не найдена в Ollama при инициализации. Будет предпринята попытка загрузки позже.")
         
         logger.info(f"Ollama провайдер настроен: {self.base_url}, модель: {self.model}")
     
@@ -51,8 +53,19 @@ class OllamaProvider(BaseLLMProvider):
                 
                 logger.info(f"Доступные модели Ollama: {available_models}")
                 
-                # Проверяем, есть ли наша модель
-                if self.model not in available_models:
+                # Проверяем, есть ли наша модель (учитываем возможные варианты названий)
+                model_found = False
+                for available_model in available_models:
+                    # Убираем префикс hf.co/ и суффикс :Q3_K_L для сравнения
+                    clean_available = available_model.replace('hf.co/', '').split(':')[0]
+                    clean_self = self.model.replace('hf.co/', '').split(':')[0]
+                    
+                    if clean_available == clean_self:
+                        model_found = True
+                        logger.info(f"Модель найдена: {available_model} соответствует {self.model}")
+                        break
+                
+                if not model_found:
                     logger.error(f"Модель {self.model} не найдена в Ollama!")
                     logger.error(f"Доступные модели: {available_models}")
                     logger.error("Для установки модели выполните: ollama pull hf.co/Vikhrmodels/Vikhr-Gemma-2B-instruct-GGUF:Q3_K_L")
@@ -214,4 +227,28 @@ class OllamaProvider(BaseLLMProvider):
                     
         except Exception as e:
             logger.error(f"Ошибка при загрузке модели {model_name}: {e}")
-            return False 
+            return False
+    
+    async def ensure_model_available(self):
+        """Проверить и при необходимости загрузить модель Ollama"""
+        try:
+            self._check_model_availability()
+        except ValueError:
+            logger.warning(f"Модель {self.model} не найдена. Пытаюсь загрузить автоматически...")
+            success = await self.pull_model(self.model)
+            if success:
+                logger.info(f"Модель {self.model} загружена успешно")
+                # Ждём инициализации модели в Ollama
+                import asyncio
+                await asyncio.sleep(10)
+                # Повторно проверяем доступность
+                try:
+                    self._check_model_availability()
+                    logger.info(f"Модель {self.model} успешно инициализирована")
+                except ValueError:
+                    raise ValueError(f"Модель {self.model} загружена, но не инициализирована в Ollama")
+            else:
+                raise ValueError(f"Не удалось загрузить модель {self.model}")
+        except Exception as e:
+            logger.error(f"Ошибка при проверке доступности модели: {e}")
+            raise 

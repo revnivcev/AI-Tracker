@@ -45,6 +45,28 @@ services:
     volumes:
       - ollama_data:/root/.ollama
 
+  telegram-bot:
+    build: .
+    container_name: ai-tracker-telegram-bot
+    restart: unless-stopped
+    command: python telegram_bot.py
+    environment:
+      - DATABASE_URL=postgresql://tracker_user:tracker_password@postgres:5432/tracker_db
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - YANDEX_TRACKER_TOKEN=${YANDEX_TRACKER_TOKEN}
+      - YANDEX_ORG_ID=${YANDEX_ORG_ID}
+      - YANDEX_CLOUD_ORG_ID=${YANDEX_CLOUD_ORG_ID}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - GIGACHAT_API_KEY=${GIGACHAT_API_KEY}
+      - GIGACHAT_AUTH_URL=${GIGACHAT_AUTH_URL}
+    depends_on:
+      - postgres
+      - ollama
+      - app
+    volumes:
+      - ./logs:/app/logs
+
 volumes:
   postgres_data:
   ollama_data: 

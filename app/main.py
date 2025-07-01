@@ -9,10 +9,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.infrastructure.database.models import engine, Base
-from app.telegram.bot import TelegramBot
+from app.tg_bot.bot import TelegramBot
 from app.scheduler.digest_scheduler import DigestScheduler
 from app.services.llm_service import LLMService
 from app.services.tracker_service import TrackerService
+from app.infrastructure.database.user_model import User
+from app.infrastructure.database.queue_model import Queue
+from app.infrastructure.database.digest_log_model import DigestLog
+import threading
 
 # Настройка логирования
 logging.basicConfig(
@@ -22,44 +26,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def check_ollama_model():
-    """Проверить доступность модели Ollama при запуске"""
-    try:
-        logger.info("🔍 Проверяю доступность модели Ollama...")
-        
-        llm_service = LLMService()
-        health_status = await llm_service.health_check()
-        
-        ollama_status = health_status.get('ollama', {})
-        if ollama_status.get('healthy', {}).get('status') == 'healthy':
-            model_available = ollama_status.get('healthy', {}).get('model_available', False)
-            if model_available:
-                logger.info(f"✅ Модель {settings.OLLAMA_MODEL} доступна и готова к работе!")
-                return True
-            else:
-                logger.error(f"❌ Модель {settings.OLLAMA_MODEL} не найдена в Ollama!")
-                logger.error("Для установки модели выполните: ollama pull deepseek-r1:1.5b")
-                return False
-        else:
-            logger.error("❌ Ollama недоступен или не отвечает!")
-            return False
-            
-    except Exception as e:
-        logger.error(f"❌ Ошибка при проверке модели Ollama: {e}")
-        return False
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Управление жизненным циклом приложения"""
     # Создаем таблицы при запуске
     logger.info("🗄️ Создаю таблицы базы данных...")
     Base.metadata.create_all(bind=engine)
-    
-    # Проверяем модель Ollama
-    model_available = await check_ollama_model()
-    if not model_available:
-        logger.warning("⚠️ Модель Ollama недоступна! Некоторые функции могут не работать.")
     
     # Инициализируем сервисы
     logger.info("🚀 Инициализирую сервисы...")
@@ -70,9 +42,11 @@ async def lifespan(app: FastAPI):
         org_id=settings.YANDEX_ORG_ID
     )
     llm_service = LLMService()
+    await llm_service.ensure_llm_models()
     
     # Инициализируем Telegram бота
     bot = TelegramBot()
+    # Polling запускается отдельным сервисом telegram-bot
     
     # Инициализируем планировщик
     scheduler = DigestScheduler(bot)

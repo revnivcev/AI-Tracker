@@ -145,33 +145,39 @@ class TelegramBot:
         
         queue_key = context.args[0].upper()
         
+        # МГНОВЕННЫЙ ОТВЕТ - пользователь понимает, что бот работает
+        processing_msg = await update.message.reply_text(f"🔍 Проверяю очередь {queue_key}...")
+        
         try:
             db = next(get_db())
             user = db.query(User).filter(User.chat_id == chat_id).first()
             
             if not user:
-                await update.message.reply_text("❌ Сначала зарегистрируйтесь с помощью /start")
+                await processing_msg.edit_text("❌ Сначала зарегистрируйтесь с помощью /start")
                 return
             
             # Проверяем, существует ли очередь
+            await processing_msg.edit_text(f"🔍 Проверяю доступность очереди {queue_key}...")
             queues = self.tracker_service.get_queues()
             queue_exists = any(q['key'] == queue_key for q in queues)
             
             if not queue_exists:
-                await update.message.reply_text(f"❌ Очередь {queue_key} не найдена в вашей организации.")
+                await processing_msg.edit_text(f"❌ Очередь {queue_key} не найдена в вашей организации.")
                 return
             
             # Проверяем, не добавлена ли уже очередь
+            await processing_msg.edit_text(f"🔍 Проверяю, не добавлена ли уже очередь {queue_key}...")
             existing_queue = db.query(Queue).filter(
                 Queue.user_id == user.id,
                 Queue.queue_key == queue_key
             ).first()
             
             if existing_queue:
-                await update.message.reply_text(f"❌ Очередь {queue_key} уже добавлена.")
+                await processing_msg.edit_text(f"❌ Очередь {queue_key} уже добавлена.")
                 return
             
             # Добавляем очередь
+            await processing_msg.edit_text(f"➕ Добавляю очередь {queue_key}...")
             queue = Queue(
                 user_id=user.id,
                 queue_key=queue_key,
@@ -180,11 +186,11 @@ class TelegramBot:
             db.add(queue)
             db.commit()
             
-            await update.message.reply_text(f"✅ Очередь {queue_key} успешно добавлена!")
+            await processing_msg.edit_text(f"✅ Очередь {queue_key} успешно добавлена!")
             
         except Exception as e:
             logger.error(f"Ошибка в add_queue_command: {e}")
-            await update.message.reply_text("❌ Произошла ошибка при добавлении очереди.")
+            await processing_msg.edit_text("❌ Произошла ошибка при добавлении очереди.")
 
     async def list_queues_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /list_queues"""
@@ -239,7 +245,7 @@ class TelegramBot:
                 )
                 return
             
-            # Отправляем сообщение о начале обработки
+            # МГНОВЕННЫЙ ОТВЕТ - пользователь понимает, что бот работает
             processing_msg = await update.message.reply_text("📊 Подготавливаю дайджест...")
             
             # Функция для обновления статуса
@@ -278,6 +284,10 @@ class TelegramBot:
 
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик текстовых сообщений"""
+        if not update.message:
+            logger.error("update.message is None")
+            return
+            
         chat_id = str(update.effective_chat.id)
         text = update.message.text.strip()
         
@@ -297,6 +307,9 @@ class TelegramBot:
                     "Сначала добавьте очереди с помощью /add_queue <ключ>"
                 )
                 return
+            
+            # МГНОВЕННЫЙ ОТВЕТ - пользователь понимает, что бот работает
+            processing_msg = await update.message.reply_text("🤖 Анализирую ваше сообщение...")
             
             # Получаем доступные очереди и приоритеты
             available_queues = [q.queue_key for q in user_queues]
@@ -319,22 +332,31 @@ class TelegramBot:
             response = analysis.get('response', 'Не понял, что вы хотите')
             data = analysis.get('data', {})
             
-            # Отправляем начальный ответ
-            await update.message.reply_text(response)
+            # Логируем детали для отладки
+            logger.info(f"Intent: {intent}, Action: {action}")
+            logger.info(f"Task data: {data.get('task_data', {})}")
+            logger.info(f"Queue key: {data.get('queue_key')}")
+            
+            # Обновляем сообщение с результатом
+            await processing_msg.edit_text(response)
             
             # Выполняем действие на основе анализа
             if action == 'create_task':
                 task_data = data.get('task_data', {})
-                if task_data.get('summary') and task_data.get('description'):
-                    # Создаем задачу
-                    await self._create_task_from_analysis(update, task_data, data.get('queue_key'))
+                queue_key = data.get('queue_key')
+                
+                # Проверяем, есть ли достаточно данных для создания задачи
+                if task_data.get('summary'):
+                    # Создаем задачу с реальными данными
+                    await self._create_task_from_analysis(update, task_data, queue_key)
                 else:
                     # Запрашиваем дополнительную информацию
-            await update.message.reply_text(
+                    await update.message.reply_text(
                         "📝 Пожалуйста, опишите задачу подробнее:\n"
                         "• Что нужно сделать?\n"
                         "• Какие требования?\n"
-                        "• Есть ли сроки?"
+                        "• Есть ли сроки?\n"
+                        "• Кто исполнитель?"
                     )
             
             elif action == 'show_digest':
@@ -371,13 +393,33 @@ class TelegramBot:
     async def _create_task_from_analysis(self, update: Update, task_data: Dict[str, Any], queue_key: str):
         """Создать задачу на основе анализа"""
         try:
+            # Подготавливаем данные для создания задачи
+            summary = task_data.get('summary', 'Новая задача')
+            description = task_data.get('description', summary)
+            assignee = task_data.get('assignee')
+            priority = task_data.get('priority', 'Средний')
+            deadline = task_data.get('deadline')
+            
+            # Если очередь не указана, используем первую доступную
+            if not queue_key:
+                db = next(get_db())
+                user = db.query(User).filter(User.chat_id == str(update.effective_chat.id)).first()
+                if user:
+                    user_queues = db.query(Queue).filter(Queue.user_id == user.id).all()
+                    if user_queues:
+                        queue_key = user_queues[0].queue_key
+            
+            if not queue_key:
+                await update.message.reply_text("❌ Не удалось определить очередь для задачи. Добавьте очередь с помощью /add_queue")
+                return
+            
             # Создаем задачу в Yandex Tracker
             created_issue = self.tracker_service.create_issue(
                 queue_key=queue_key,
-                summary=task_data['summary'],
-                description=task_data['description'],
-                assignee=task_data.get('assignee'),
-                priority=task_data.get('priority', 'Средний')
+                summary=summary,
+                description=description,
+                assignee=assignee,
+                priority=priority
             )
             
             if created_issue:
@@ -388,9 +430,13 @@ class TelegramBot:
 📂 Очередь: {created_issue['queue']}
 📊 Статус: {created_issue['status']}
 🌐 Ссылка: {created_issue['url']}
-
-Задача готова к работе! 🚀
-                """
+"""
+                
+                if deadline:
+                    success_text += f"📅 Дедлайн: {deadline}\n"
+                
+                success_text += "\nЗадача готова к работе! 🚀"
+                
                 await update.message.reply_text(success_text)
             else:
                 await update.message.reply_text("❌ Ошибка при создании задачи в Yandex Tracker.")
