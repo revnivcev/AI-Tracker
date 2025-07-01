@@ -221,4 +221,11 @@ class DigestScheduler:
         for job in jobs:
             logger.info(f"Джоб: {job.id} - {job.name} - Следующий запуск: {job.next_run_time}")
         
-        return jobs 
+        return jobs
+    
+    def stop(self):
+        """Остановить планировщик"""
+        logger.info("Остановка планировщика дайджестов...")
+        if self.scheduler.running:
+            self.scheduler.shutdown()
+            logger.info("Планировщик дайджестов остановлен") 

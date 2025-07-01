@@ -7,7 +7,7 @@ import json
 from typing import Dict, Any, List, Optional
 from app.config import settings
 from app.prompts import PromptLoader
-from app.services.llm.ollama_provider import OllamaProvider
+from .ollama_provider import OllamaProvider
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class LLMService:
         ollama_config = {
             'base_url': settings.OLLAMA_BASE_URL,
             'model': settings.OLLAMA_MODEL,
-            'timeout': 300  # Увеличенный таймаут для стабильной работы
+            'timeout': 60
         }
         self.providers['ollama'] = OllamaProvider(ollama_config)
         
@@ -62,7 +62,8 @@ class LLMService:
         
         return await provider.generate(prompt, **kwargs)
     
-    async def create_task(self, user_text: str, available_queues: List[str], available_priorities: List[str]) -> Dict[str, Any]:
+    async def create_task(self, user_text: str, available_queues: List[str], 
+                         available_priorities: List[str] = None) -> Dict[str, Any]:
         """
         Создать задачу на основе текста пользователя
         
@@ -74,15 +75,13 @@ class LLMService:
         Returns:
             Словарь с данными задачи
         """
-        available_queues = available_queues or []
-        available_priorities = available_priorities or ["Низкий", "Средний", "Высокий"]
         try:
             # Загружаем промт для создания задачи
             prompt = self.prompt_loader.load_prompt(
                 'create_task.md',
                 user_text=user_text,
                 available_queues=available_queues,
-                available_priorities=available_priorities
+                available_priorities=available_priorities or ["Низкий", "Средний", "Высокий"]
             )
             
             # Генерируем ответ
@@ -90,12 +89,13 @@ class LLMService:
             
             # Парсим JSON из ответа
             return self._parse_json_response(response)
-                
+            
         except Exception as e:
             logger.error(f"Ошибка при создании задачи: {e}")
             return self._create_fallback_task(user_text, available_queues, available_priorities)
     
-    async def analyze_intent(self, user_text: str, available_queues: List[str], available_priorities: List[str]) -> Dict[str, Any]:
+    async def analyze_intent(self, user_text: str, available_queues: List[str],
+                           available_priorities: List[str] = None) -> Dict[str, Any]:
         """
         Анализировать намерение пользователя
         
@@ -107,15 +107,13 @@ class LLMService:
         Returns:
             Словарь с результатом анализа
         """
-        available_queues = available_queues or []
-        available_priorities = available_priorities or ["Низкий", "Средний", "Высокий"]
         try:
             # Загружаем промт для анализа намерений
             prompt = self.prompt_loader.load_prompt(
                 'analyze_intent.md',
                 user_text=user_text,
                 available_queues=available_queues,
-                available_priorities=available_priorities
+                available_priorities=available_priorities or ["Низкий", "Средний", "Высокий"]
             )
             
             # Генерируем ответ
@@ -153,7 +151,7 @@ class LLMService:
             
             # Генерируем дайджест
             return await self.generate(prompt)
-                    
+            
         except Exception as e:
             logger.error(f"Ошибка при создании дайджеста: {e}")
             return self._create_fallback_summary(queue_data)
@@ -181,12 +179,13 @@ class LLMService:
             
             # Генерируем резюме
             return await self.generate(prompt)
-                    
+            
         except Exception as e:
             logger.error(f"Ошибка при создании резюме изменений: {e}")
             return "Обнаружены изменения в задачах."
 
-    async def analyze_free_conversation(self, user_message: str, available_queues: List[str], available_priorities: List[str], user_context: str = "") -> Dict[str, Any]:
+    async def analyze_free_conversation(self, user_message: str, available_queues: List[str],
+                                      available_priorities: List[str] = None, user_context: str = "") -> Dict[str, Any]:
         """
         Анализировать свободное сообщение пользователя и определять намерения
         
@@ -199,15 +198,13 @@ class LLMService:
         Returns:
             Словарь с анализом намерений и данными для действий
         """
-        available_queues = available_queues or []
-        available_priorities = available_priorities or ["Низкий", "Средний", "Высокий", "Критический"]
         try:
             # Загружаем промт для свободного общения
             prompt = self.prompt_loader.load_prompt(
                 'free_conversation.md',
                 user_message=user_message,
                 available_queues=available_queues,
-                available_priorities=available_priorities,
+                available_priorities=available_priorities or ["Низкий", "Средний", "Высокий", "Критический"],
                 user_context=user_context
             )
             
@@ -259,7 +256,7 @@ class LLMService:
             "tags": None,
             "type": "task"
         }
-        
+    
     def _create_fallback_intent_analysis(self, user_text: str, available_queues: List[str],
                                        available_priorities: List[str] = None) -> Dict[str, Any]:
         """Fallback для анализа намерений"""
@@ -353,58 +350,4 @@ class LLMService:
                     "error": str(e)
                 }
         
-        return health_status
-    
-    async def classify_status(self, original_status: str) -> str:
-        """
-        Классифицировать статус задачи через LLM
-        
-        Args:
-            original_status: Исходный статус из Yandex Tracker
-            
-        Returns:
-            Стандартизированный статус: To Do, In Progress, Blocked, Done
-        """
-        try:
-            # Загружаем промт для классификации статусов
-            prompt = self.prompt_loader.load_prompt(
-                'status_classification.md',
-                original_status=original_status
-            )
-            
-            # Генерируем классификацию
-            response = await self.generate(prompt)
-            
-            # Очищаем ответ от лишних символов
-            clean_response = response.strip().lower()
-            
-            # Определяем статус
-            if 'to do' in clean_response or 'todo' in clean_response:
-                return 'To Do'
-            elif 'in progress' in clean_response or 'progress' in clean_response:
-                return 'In Progress'
-            elif 'blocked' in clean_response or 'block' in clean_response:
-                return 'Blocked'
-            elif 'done' in clean_response or 'complete' in clean_response or 'finished' in clean_response:
-                return 'Done'
-            else:
-                logger.warning(f"LLM вернул неожиданный статус: '{response}', используем 'To Do'")
-                return 'To Do'
-            
-        except Exception as e:
-            logger.error(f"Ошибка при классификации статуса '{original_status}': {e}")
-            # Fallback на старую логику
-            return self._fallback_classify_status(original_status)
-    
-    def _fallback_classify_status(self, status: str) -> str:
-        """Fallback классификация статуса (старая логика)"""
-        status_lower = status.lower()
-        
-        if any(word in status_lower for word in ['done', 'готово', 'complete', 'завершено', 'решено', 'resolved', 'closed', 'закрыто', 'выполнено']):
-            return 'Done'
-        elif any(word in status_lower for word in ['progress', 'в работе', 'in progress', 'работа', 'выполняется', 'в процессе']):
-            return 'In Progress'
-        elif any(word in status_lower for word in ['blocked', 'блок', 'block', 'блокировано', 'заблокировано', 'требуется информация', 'information required', 'need info', 'info needed']):
-            return 'Blocked'
-        else:
-            return 'To Do' 
+        return health_status 

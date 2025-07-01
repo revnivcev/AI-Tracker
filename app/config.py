@@ -21,10 +21,7 @@ class Settings(BaseModel):
     
     # LLM Configuration
     OLLAMA_BASE_URL: str = "http://ollama:11434"
-    OLLAMA_MODEL: str = "hf.co/Vikhrmodels/Vikhr-Gemma-2B-instruct-GGUF:Q3_K_L"
-    
-    # Whisper Configuration
-    WHISPER_BASE_URL: str = "http://whisper:9000"
+    OLLAMA_MODEL: str = "deepseek-r1:1.5b"
     
     # Sber GigaChat
     GIGACHAT_API_KEY: Optional[str] = None
@@ -53,7 +50,7 @@ settings = Settings(
     YANDEX_CLOUD_ORG_ID=os.getenv("YANDEX_CLOUD_ORG_ID"),
     DATABASE_URL=os.getenv("DATABASE_URL", "postgresql://tracker_user:tracker_password@postgres:5432/tracker_db"),
     OLLAMA_BASE_URL=os.getenv("OLLAMA_BASE_URL", "http://ollama:11434"),
-    OLLAMA_MODEL=os.getenv("OLLAMA_MODEL", "hf.co/Vikhrmodels/Vikhr-Gemma-2B-instruct-GGUF:Q3_K_L"),
+    OLLAMA_MODEL=os.getenv("OLLAMA_MODEL", "deepseek-r1:1.5b"),
     GIGACHAT_API_KEY=os.getenv("GIGACHAT_API_KEY"),
     GIGACHAT_AUTH_URL=os.getenv("GIGACHAT_AUTH_URL", "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"),
     LLM_PROVIDER=os.getenv("LLM_PROVIDER", "ollama"),

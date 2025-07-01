@@ -12,16 +12,16 @@ services:
       - YANDEX_ORG_ID=${YANDEX_ORG_ID}
       - YANDEX_CLOUD_ORG_ID=${YANDEX_CLOUD_ORG_ID}
       - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=hf.co/Vikhrmodels/Vikhr-Gemma-2B-instruct-GGUF:Q3_K_L
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
       - GIGACHAT_API_KEY=${GIGACHAT_API_KEY}
       - GIGACHAT_AUTH_URL=${GIGACHAT_AUTH_URL}
-      - WHISPER_BASE_URL=http://whisper:9000
     depends_on:
       - postgres
       - ollama
-      - whisper
     volumes:
       - ./logs:/app/logs
+    ports:
+      - "8000:8000"
 
   postgres:
     image: postgres:15
@@ -45,21 +45,6 @@ services:
     volumes:
       - ollama_data:/root/.ollama
 
-  whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest
-    container_name: ai-tracker-whisper
-    restart: unless-stopped
-    environment:
-      - ASR_MODEL=base
-      - ASR_MODEL_DIR=/models
-      - ASR_DEVICE=cpu
-      - ASR_COMPUTE_TYPE=float32
-    ports:
-      - "9000:9000"
-    volumes:
-      - whisper_data:/models
-
 volumes:
   postgres_data:
-  ollama_data:
-  whisper_data: 
+  ollama_data: 
